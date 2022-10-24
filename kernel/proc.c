@@ -145,6 +145,7 @@ found:
   memset(&p->context, 0, sizeof(p->context));
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
+  p->priority = 0;
 
   return p;
 }
@@ -504,6 +505,10 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
+  // Aumentar prioridad si el proceso consumio un quantum entero.
+  if (p->priority >= 0 && p->priority < NPRIO - 1){
+    p->priority++;
+  }
   p->state = RUNNABLE;
   sched();
   release(&p->lock);
@@ -550,7 +555,10 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-
+  // Ascenso de prioridad si el proceso pasa a estar bloqueado
+  if(p->priority > 0 && p->priority < NPRIO){
+    p->priority--;
+  }
   sched();
 
   // Tidy up.
@@ -677,7 +685,7 @@ procdump(void)
       state = states[p->state];
     else
       state = "???";
-    printf("%d %s %s", p->pid, state, p->name);
+    printf("%d %s %s %d", p->pid, state, p->name, p->priority);
     printf("\n");
   }
 }
