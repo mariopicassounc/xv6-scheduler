@@ -575,11 +575,6 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
 
-  // Aumentar prioridad si el proceso consumio un quantum entero.
-  if (p->priority >= 0 && p->priority < NPRIO - 1){
-    p->priority++;
-  }
-
   p->state = RUNNABLE;
   enqueue(p);
 
