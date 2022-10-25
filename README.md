@@ -181,6 +181,7 @@ El funcionamiento sería: Ejecuto la línea “cpubench &; iobench &”, luego r
 Esta es la diferencia principal que tiene MLFQ con respecto a Round Robin.
 
 Algo también a destacar es que, a medida que el quantum se va reduciendo, cpu e IO hacen cada vez menos operaciones, hasta tal punto que con quantums 100 o 1000 veces más corto, sólo imprime un par de resultados luego de ejecutarlos por 5 minutos.
+El rendimiento para procesos CPU bound se reduce considerablemente con la reducción de tiempo de quantum.
 
 Nuevamente, en algunos, casos hay comportamientos extraños en los tests usando MLFQ (al igual que usando Round Robin): 
  - El primero es un resultado incongruente: Cuando ejecutamos 2 IO, o 2 CPU, el promedio de operaciones sigue siendo casi igual que cuando ejecutamos sólo uno de cada. Esto no debería ser así,  sino que debería ser lo inversa a este comportamiento (cuando ejecuto 2 IO, por ejemplo, el promedio tendría que ser menor a cuando ejecuto sólo 1 IO).
