@@ -12,10 +12,14 @@ Grupo 22:
 
 >Analizar el código del planificador y responda: ¿Qué política de planificación utiliza xv6 para elegir el próximo proceso a ejecutarse? Pista: xv6 nunca sale de la función scheduler por medios “normales”.
 
-La política utilizada es Round Robin, esta política ejecuta todos los procesos del sistema operativo una determinada cantidad de tiempo denominada “quantum”. Todos los procesos son tratados con la misma prioridad. Esta política da un tiempo máximo de uso de CPU a cada proceso, una vez que este tiempo pasa, es pasado de estado “RUNNING” a estado “RUNNABLE”.
+La política utilizada es Round Robin, esta política trata a todos los procesos del sistema operativo con la misma prioridad y les da a todos un tiempo máximo de uso de CPU  denominado “quantum”. 
 
-Cada vez que un quantum termina, se produce un timer interrupt, éste se identifica en la función usertrap() del archivo trap.c. Luego se llama yield() y sched(), que está en proc.c, donde se realiza el cambio de contexto al scheduler.
-Es importante notar que estamos volviendo a scheduler, que es infinitamente ejecutado. 
+Cada vez que un quantum termina, se produce un timer interrupt, éste se identifica en la función usertrap() del archivo trap.c. Luego se llama yield() -en proc.c-, donde se cambia el estado del proceso de RUNNING a RUNNABLE y luego dentro de esta se llama a sched(), donde se realiza el cambio de contexto al scheduler mediante la función swtch().
+
+Notar que el scheduler se ejecuta infinitamente, y se vuelve a este cada vez que un proceso se deja de ejecutar ya sea por timer interrupt, io, o syscall, dejando de ejecutarse sólo en caso que ocurra alguna excepción. Esta función lo que hace es recorrer la tabla de procesos buscando alguno que esté en estado RUNNABLE y lo cambia a RUNNING, luego hace el cambio de contexto al proceso mediante swtch().
+
+Así, este planificador va alternando entre proceso y proceso sin importar si estos son cpubound o iobound. Por lo que tiene buen tiempo de respuesta pero no es bueno para la interacción. 
+
 
 ### Ejercicio 2
 
