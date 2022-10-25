@@ -10,7 +10,15 @@ struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
 
+// Primer proceso de la cola de procesos para cada prioridad
+struct proc *queue_first[NPRIO];
+
+// Ultimo proceso de la cola de procesos para cada prioridad
+struct proc *queue_last[NPRIO];
+
 struct proc *initproc;
+
+// Estos punteros siempre son inicializados en 0x0
 
 int nextpid = 1;
 struct spinlock pid_lock;
@@ -25,6 +33,57 @@ extern char trampoline[]; // trampoline.S
 // memory model when using p->parent.
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
+
+// Encolar un proceso en la cola, segun su prioridad. Requiere usar spinlock
+void 
+enqueue(struct proc *p)
+{
+  if(p->state != RUNNABLE){
+    panic("Error trying of enqueue a not RUNNABLE process");
+  }
+
+  if(queue_first[p->priority] != 0) {
+    queue_last[p->priority]->next_proc = p;
+  }
+
+  else {
+    queue_first[p->priority] = p;
+  }
+
+  p->next_proc = 0;
+  queue_last[p->priority] = p;
+};
+
+// Eliminar un proceso en particular. Se usa solamente para eliminar procesos que pasan de RUNABLE a RUNNING
+void elim_proc_in_queue(struct proc *p){
+  struct proc *prev;
+  struct proc *aux;
+
+  // Si estaba primero
+  if(queue_first[p->priority] == p) {
+    queue_first[p->priority] = p->next_proc;
+  }
+  // No estaba primero
+  else {
+    prev = queue_first[p->priority];
+    aux = queue_first[p->priority]->next_proc;
+
+    // Busco el proceso, acordandome el proc previo en la cola
+    while(p != aux && aux != 0) {
+      prev = aux;
+      aux = prev->next_proc;
+    }
+    // Saco el proceso de la cola
+    prev->next_proc = p->next_proc;
+
+    // Si era el ultimo
+    if(queue_last[p->priority] == p) {
+      queue_last[p->priority] = prev;
+    }
+  }
+  // Dejo el proc apuntando a 0
+  p->next_proc = 0;
+}
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -251,6 +310,7 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  enqueue(p);
 
   release(&p->lock);
 }
@@ -312,7 +372,7 @@ fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
-
+  
   release(&np->lock);
 
   acquire(&wait_lock);
@@ -321,6 +381,7 @@ fork(void)
 
   acquire(&np->lock);
   np->state = RUNNABLE;
+  enqueue(np);
   release(&np->lock);
 
   return pid;
@@ -453,20 +514,28 @@ scheduler(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
+    for(int i = 0; i < NPRIO; i++) {
+      
+      if(queue_first[i] == 0) {
+        continue;
       }
+
+      p = queue_first[i];
+      acquire(&p->lock);
+      
+      elim_proc_in_queue(p);
+
+      // Switch to chosen process.  It is the process's job
+      // to release its lock and then reacquire it
+      // before jumping back to us.
+      p->state = RUNNING;
+      c->proc = p;
+      swtch(&c->context, &p->context);
+
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      c->proc = 0;
+      
       release(&p->lock);
     }
   }
@@ -505,12 +574,17 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
+
   // Aumentar prioridad si el proceso consumio un quantum entero.
   if (p->priority >= 0 && p->priority < NPRIO - 1){
     p->priority++;
   }
+
   p->state = RUNNABLE;
+  enqueue(p);
+
   sched();
+
   release(&p->lock);
 }
 
@@ -581,6 +655,7 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        enqueue(p);
       }
       release(&p->lock);
     }
@@ -602,6 +677,7 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        enqueue(p);
       }
       release(&p->lock);
       return 0;
