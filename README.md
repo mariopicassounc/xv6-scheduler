@@ -22,11 +22,11 @@ Es importante notar que estamos volviendo a scheduler, que es infinitamente ejec
 #### Apartado a
 
 >¿Cuánto dura un quantum en xv6?
-``
+```c
 // ask the CLINT for a timer interrupt.
  int interval = 1000000; // cycles; about 1/10th second in qemu.
-``
-Se define en start.c. Como menciona dura 1000000 interrupciones, que según el comentario son 1/10 de segundo.
+```
+Se define en start.c. Como menciona dura 1000000 interrupciones, que según el comentario son 1/10 de segundo en el qemu.
 
 #### Apartado b
 
@@ -131,6 +131,42 @@ Otra cosa a recalcar es la siguiente: En el escenario 4, que se opera con un qua
 
 ![MLFQ IO Q=div 1000](/testsGráficos/MLFQiodiv1000.png)
 
+## Tercera Parte: Implementando MLFQ
+### Rastreando la prioridad de los procesos
+#### MLFQ regla 3: rastreo de prioridad y asignación máxima
+* La prioridad maxima es 0
+* NPRIO - 1 es la prioridad minima 
+
+Para que los procesos se inicien con la prioridad más alta se setea `p->priority = 0` en la funcion allocproc de proc.c, que es la encargada de inicializar el estado del proceso para ser ejecutado. 
+
+#### MLFQ regla 4: descenso y ascenso de prioridad
+El descenso de prioridad va a ocurrir antes de hace `yield()` en el caso `which_dev == 2` de la funcion `usertrap()` del archivo `trap.c`. Esto es así debido que allí llega la ejecución cuando se produce una interrupción por tiempo al proceso que estaba corriendo en user, i.e que ya se le terminó el quantum.
+
+Y el ascenso de prioridad ocurre en el sleep(), ya que es la zona del codigo donde un proceso pasa a estar bloqueado.
+
+### Implementando MLFQ
+
+#### MLFQ regla 1: correr el proceso de mayor prioridad
+Decidimos implementar una cola que se puede acceder mediante `queue_first` y `queue_last`. Además cada proceso tiene el campo `proc->next_proc` que es un puntero al próximo elemento en la cola, al igual que `proc->priority` fue agregado en la implementación de la estructura en `proc.h`
+
+Por simplicidad se tomó el approach de que la cola tenga solo procesos RUNNABLE.
+
+Hay 3 colas, una por cada prioridad, y para correr el proceso de mayor prioridad simplemente seria buscar a qué proceso apunta `queue_first[0]`. Si no hay nada saltamos un paso de iteración nos vamos a ver que hay en la cola de procesos de prioridad 1, y así sucesivamente.
+
+Para que haya en las colas solo procesos en estado RUNNABLE utilizamos la función `elim_proc_in_queue(struct proc *p)` que se ejecuta antes de correr un proceso (RUNNABLE a RUNNING)
+
+#### MLFQ regla 2: round-robin para procesos de misma prioridad
+Se va a correr el proceso RUNNABLE con prioridad más alta, luego se vuelve a buscar en las colas un proceso para ejecutar. 
+En el caso de que la cola era la más prioritaria el porqué es round robin es trivial.
+En el caso de que se estaba ejecutando un proceso de una cola menos prioritaria, solo va a continuar en Round Robin si no hay un proceso de prioridad mas alta en estado RUNNABLE esperando en alguna cola más prioritaria.
+
+#### Starvation
+Casos en los que para mi se produciría starvation
+
+Si tenés muchos procesos IO es probable que se produzca starvation ya que son procesos que devuelven el control al kernel antes de que se termine su quantum, y por lo tanto suben su prioridad o bien se mantienen en la prioridad más alta.
+
+Si haces las suficientes Device Interrupts ej mandando paquetes de red podes negar la ejecución de procesos CPU bound.
+Estarías cortando constantemente la ejecución de los procesos CPU sin dejaros avanzar (similar a DOS ¿?)
 
 ##### Análisis final: MLFQ comparado con Round Robin
 
